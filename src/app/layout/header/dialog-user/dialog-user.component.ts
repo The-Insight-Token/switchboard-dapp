@@ -1,5 +1,8 @@
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, OnInit } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { MatDialogRef, MAT_DIALOG_DATA } from '@angular/material';
+import { ToastrService } from 'ngx-toastr';
+import { IamService } from 'src/app/shared/services/iam.service';
 import { DialogData } from './dialog-user-data';
 
 @Component({
@@ -7,35 +10,67 @@ import { DialogData } from './dialog-user-data';
     templateUrl: 'dialog-user.component.html',
     styleUrls: ['../header.component.scss']
 })
-export class DialogUser {
-
-    public currentUserKey = '';
-    public currentUserData = {};
-    public exampleHeader = '';
+export class DialogUser implements OnInit {
+    public exampleHeader    = '';
+    public profileForm      : FormGroup;
+    public maxDate          : Date;
+    public isSaving         = false;
 
     constructor(
         public dialogRef: MatDialogRef<DialogUser>,
-        @Inject(MAT_DIALOG_DATA) public data: DialogData) {
+        private fb: FormBuilder,
+        private iamService: IamService,
+        private toastr: ToastrService) {
 
-        if (localStorage.getItem('EW-DID-CONFIG')) {
-            this.currentUserKey = JSON.parse(localStorage.getItem('EW-DID-CONFIG')).privateKey;
-        }
+        this.profileForm = fb.group({
+            name: ['', Validators.compose([
+                Validators.maxLength(256),
+                Validators.required
+            ])],
+            birthdate: ['', Validators.required],
+            address: ['', Validators.compose([
+                Validators.maxLength(500),
+                Validators.required
+            ])]
+        });
 
-        if (localStorage.getItem('EW-DID-CONFIG') && localStorage.getItem('currentUser')) {
-            let didConfig: any = JSON.parse(localStorage.getItem('EW-DID-CONFIG'));
-            let currentUser: any = JSON.parse(localStorage.getItem('currentUser'));
-            this.currentUserData = {
-                'privateKey': didConfig.privateKey,
-                'currentUser': currentUser
-            }
-        }
+        let today = new Date();
+        today.setFullYear(today.getFullYear() - 18);
+        this.maxDate = today;
+    }
+
+    async ngOnInit() {
+        let data = await this.iamService.iam.getUserClaims();
+        console.log('profile data', data);
+        let diddoc = await this.iamService.iam.getDidDocument();
+        console.log('diddoc', diddoc)
     }
 
     onNoClick(): void {
         this.dialogRef.close();
     }
 
-    getUserData() {
-        return JSON.stringify(this.currentUserData);
+    async save() {
+        if (this.profileForm.valid) {
+            this.isSaving = true;
+            console.log(this.profileForm.getRawValue());
+
+            let data = this.profileForm.getRawValue();
+            delete data.birthdate;
+            try {
+                await this.iamService.iam.createSelfSignedClaim({
+                    data: data
+                });
+                this.toastr.success('Identity is updated.', 'Success');
+                this.dialogRef.close();
+            }
+            catch (e) {
+                console.error('Saving Identity Error', e);
+                this.toastr.error(e.message, 'System Error')
+            }
+            finally {
+                this.isSaving = false;
+            }
+        }
     }
 }
