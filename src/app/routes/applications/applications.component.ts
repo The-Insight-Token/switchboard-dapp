@@ -87,6 +87,8 @@ export class ApplicationsComponent implements OnInit {
     this.isIamEwcOwner = await this.iamService.iam.isOwner({
       domain: 'iam.ewc'
     });
+    
+    console.log('safe info:',  await appsSdk);
   }
 
   async showMe(i: any) {
